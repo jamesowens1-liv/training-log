@@ -651,6 +651,7 @@ function drawTrain(){
 function drawCardio(){
   const pts=[];const other=[];
   D.sessions.forEach(s=>s.cardio.forEach(c=>{
+    if(c.kind==='note') return;
     if(c.speed) pts.push({date:s.date,...c}); else other.push(fmtDate(s.date)+' — '+c.text);
   }));
   chart('c-cardio',{
@@ -870,10 +871,22 @@ function parseLog(text,bw){
     let name=t, body=t;
     if(parts.length>1){ name=parts[0]; body=parts.slice(1).join(' - '); }
     else { const d=t.match(/\d/); if(d){ name=t.slice(0,d.index).trim(); body=t.slice(d.index); } }
-    if(!hasSets || (CARDIO.test(name) && !/[x×]/.test(name))) { addCardio(t); return; }
+    if(!hasSets){
+      if(CARDIO.test(t)) addCardio(t);
+      else { cur.cardio.push({text:t,kind:'note'}); lastEx=null; }
+      return;
+    }
+    if(CARDIO.test(name) && !/[x×]/.test(name)) { addCardio(t); return; }
     addExercise(name, body);
   };
-  for(let line of text.split(/\r?\n/)){
+  const raw=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const lines=[];
+  for(const l of raw){
+    const prev=lines[lines.length-1];
+    if(prev && (/[-–x×,]\s*$/i.test(prev) || /^[x×]/i.test(l))) lines[lines.length-1]=prev+' '+l;
+    else lines.push(l);
+  }
+  for(let line of lines){
     line=line.trim(); if(!line) continue;
     const h=line.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2}))?\s*[-–]?\s*(.*)$/);
     if(h){
@@ -916,10 +929,13 @@ function wireAdd(){
     const known=new Set(BASE.sessions.flatMap(s=>s.exercises.map(e=>e.key)));
     const names=pending.flatMap(s=>s.exercises.map(e=>e.key));
     const fresh=names.filter(n=>!known.has(n));
-    const cardio=pending.reduce((a,s)=>a+s.cardio.length,0);
+    const cards=pending.flatMap(s=>s.cardio);
+    const cardio=cards.filter(c=>c.kind!=='note').length;
+    const notes=cards.filter(c=>c.kind==='note');
     el('parseOut').textContent=pending.length
       ? `${names.length} lift${names.length===1?'':'s'}${cardio?', '+cardio+' cardio':''} read`
         + (fresh.length?` · new: ${fresh.map(f=>f.split(' · ')[0]).join(', ')}`:'')
+        + (notes.length?` · couldn't read: "${notes[0].text}"`:'')
       : 'No session found. Start a line with a date, like 15.09 - L';
     el('doSave').disabled=!pending.length;
   };
