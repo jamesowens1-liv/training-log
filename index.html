@@ -11,12 +11,14 @@
   :root{
     --paper:#E7EBED; --card:#FFFFFF; --ink:#0F181E; --muted:#5D6E79; --rule:#CFD7DC;
     --teal:#16615E; --oxide:#9B3A2C; --slate:#33556E; --ochre:#9A7B1E; --sand:#DCE2E5;
+    --flagbg:#FBF7EA; --flagline:#E6DCBC;
     --display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
     --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);
+       transition:background .2s ease,color .2s ease;
        font-size:15px;line-height:1.55;-webkit-text-size-adjust:100%}
   .wrap{max-width:960px;margin:0 auto;
        padding:calc(22px + env(safe-area-inset-top)) 16px calc(80px + env(safe-area-inset-bottom))}
@@ -57,7 +59,7 @@
   .btn.ghost{background:none;color:var(--ink);border:1px solid var(--rule)}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
   .note{font-size:13px;color:var(--muted);border-left:2px solid var(--ochre);padding:2px 0 2px 11px;margin:12px 0}
-  .flag{font-size:13.5px;background:#FBF7EA;border:1px solid #E6DCBC;padding:11px 13px;margin:12px 0}
+  .flag{font-size:13.5px;background:var(--flagbg);border:1px solid var(--flagline);padding:11px 13px;margin:12px 0}
   code{font-family:var(--mono);font-size:12.5px;background:var(--sand);padding:1px 4px}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
   .chips button{font:inherit;font-size:13px;background:var(--card);border:1px solid var(--rule);
@@ -137,6 +139,13 @@ Machine shoulder press - 25 x 8 x 3
     </div>
       </div>
     </details>
+    <div class="card">
+      <h3>Try a look</h3>
+      <p style="font-size:13.5px;margin-bottom:10px">Four complete designs. Live with one for a day,
+        then flip. Once you've chosen I'll bake it in and take this box out.</p>
+      <div class="chips" id="themeChips"></div>
+      <p class="readout" id="themeNote"></p>
+    </div>
     <details class="card" style="padding:12px 16px">
       <summary style="cursor:pointer;font-size:14px;color:var(--muted)">Export or restore your data</summary>
       <div style="margin-top:10px">
@@ -649,6 +658,67 @@ function drawCardio(){
   el('cardioList').textContent=other.reverse().join('\n');
 }
 
+/* ---------- themes ---------- */
+const THEMES={
+ paper:{name:'Paper', note:'Where we started. Cool grey, library serif, no fonts to download.',
+   scheme:'light', vars:{
+   paper:'#E7EBED',card:'#FFFFFF',ink:'#0F181E',muted:'#5D6E79',rule:'#CFD7DC',sand:'#DCE2E5',
+   teal:'#16615E',oxide:'#9B3A2C',slate:'#33556E',ochre:'#9A7B1E',flagbg:'#FBF7EA',flagline:'#E6DCBC',
+   display:'"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif'}},
+
+ clinical:{name:'Clinical', note:'The body-scan clinic look. Near-white, cool, precise, one instrument blue.',
+   scheme:'light', vars:{
+   paper:'#F1F4F6',card:'#FFFFFF',ink:'#0A1418',muted:'#68797F',rule:'#DCE4E8',sand:'#E6EDF0',
+   teal:'#0F6E96',oxide:'#B8503F',slate:'#2C4C63',ochre:'#7F8D95',flagbg:'#EDF4F7',flagline:'#CFE0E8',
+   display:'-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif'},
+   tweak:'h1,h2{letter-spacing:-.02em;font-weight:600}.rail b{letter-spacing:-.02em}'},
+
+ botanical:{name:'Botanical', note:'Warm paper, leaf green, poppy scarlet, opium mauve. Serif headings.',
+   scheme:'light', font:'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap',
+   vars:{
+   paper:'#F1EBE1',card:'#FBF8F3',ink:'#2A211C',muted:'#7B6B5E',rule:'#DFD4C5',sand:'#E9E0D2',
+   teal:'#4C6B41',oxide:'#B23A2E',slate:'#6B5B7B',ochre:'#C08C2A',flagbg:'#F6EEDF',flagline:'#E3D3B4',
+   display:'"Fraunces",Georgia,serif'}},
+
+ editorial:{name:'Editorial', note:'Dark, high contrast, one poppy red. Quiet but not shy.',
+   scheme:'dark', font:'https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&display=swap',
+   vars:{
+   paper:'#141211',card:'#1C1918',ink:'#F2EDE6',muted:'#9B928B',rule:'#302B29',sand:'#262220',
+   teal:'#5FBFAE',oxide:'#E2503B',slate:'#7FB6C9',ochre:'#D9B24C',flagbg:'#221E1B',flagline:'#3A332E',
+   display:'"Instrument Serif",Georgia,serif',
+   mono:'"IBM Plex Mono",ui-monospace,Menlo,monospace'},
+   tweak:'h1{font-size:38px;font-weight:400}h2{font-weight:400}.rail b{font-weight:400}'}
+};
+let themeStyle=null;
+function applyTheme(id){
+  const t=THEMES[id]||THEMES.paper, r=document.documentElement;
+  Object.entries(t.vars).forEach(([k,v])=>r.style.setProperty('--'+k,v));
+  if(!t.vars.mono) r.style.setProperty('--mono','ui-monospace,"SF Mono",Menlo,Consolas,monospace');
+  r.style.colorScheme=t.scheme;
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content',t.vars.paper);
+  if(t.font && !document.querySelector(`link[href="${t.font}"]`)){
+    const l=document.createElement('link'); l.rel='stylesheet'; l.href=t.font; document.head.appendChild(l);
+  }
+  if(!themeStyle){ themeStyle=document.createElement('style'); document.head.appendChild(themeStyle); }
+  themeStyle.textContent=t.tweak||'';
+  try{ localStorage.setItem('papaver-theme',id); }catch(e){}
+  const chips=el('themeChips');
+  if(chips){
+    chips.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.t===id));
+    el('themeNote').textContent=t.note;
+  }
+  setTimeout(drawAll,60);
+}
+function wireThemes(){
+  el('themeChips').innerHTML=Object.entries(THEMES).map(([k,t])=>
+    `<button data-t="${k}" aria-pressed="false">${t.name}</button>`).join('');
+  el('themeChips').onclick=e=>{const b=e.target.closest('button'); if(b) applyTheme(b.dataset.t);};
+  let saved='paper';
+  try{ saved=localStorage.getItem('papaver-theme')||'paper'; }catch(e){}
+  applyTheme(saved);
+}
+
 /* ---------- log summary ---------- */
 function drawLog(){
   const S=D.sessions, b=D.body, R=allRuns().filter(r=>r.date).sort((a,b2)=>a.date<b2.date?-1:1);
@@ -853,7 +923,7 @@ function drawAll(){
 (async()=>{
   await load();
   D=merge();
-  buildNav(); rail(); wireAdd(); drawLog();
+  buildNav(); rail(); wireAdd(); drawLog(); wireThemes();
   window.addEventListener('resize',()=>drawAll());
 })();
 </script>
