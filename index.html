@@ -797,6 +797,7 @@ function drawRuns(){
 
 /* ---------- parser (same notation as the log) ---------- */
 const ALIASES=[["Incline chest press", ["incline chest press", "lie down chest press", "lie down barbell chest press", "chest press machine", "machine chest press"]], ["Diagonal lateral raise", ["diagonal lateral raise", "dlr", "single arm diagonal lateral raise", "d/slr"]], ["Side lateral raise", ["side lateral raise", "slr", "side slr"]], ["Overhead tricep extension", ["overhead tricep extension", "seated overhead tricep extension", "overhead tricep curl", "ote", "overhead plate extension", "tricep extension machine", "plate tricep curl", "plate tricep press"]], ["Shoulder press machine", ["shoulder press machine", "machine shoulder press", "spm", "barbell shoulder press"]], ["Dumbbell shoulder press", ["dumbbell shoulder press", "sdsp"]], ["Cable tricep press", ["cable tricep press", "cable tricep curl", "ctc", "cable tricep press bar"]], ["Assisted pull up", ["assisted pull up", "assisted pull up machine", "lat pull down", "pull down machine"]], ["Seated row machine", ["seated row machine", "machine seated row", "cable seated row"]], ["Barbell curl full range", ["barbell full range", "full range barbell bicep curl", "barbell bicep curl full range", "barbell bicep full range", "full range bar curl"]], ["Seated dumbbell curl", ["seated dumbbell curl", "seated incline dumbbell curl", "incline seated dumbbell bicep curl", "standing dumbbell curl", "standing dumbbell curl single arm", "ssa", "seated single arm"]], ["Standing hammer curl", ["standing hammer curl", "hammer curl", "hammer curl standing", "seated hammer curl", "hc", "sashc"]], ["Arnold press", ["arnold press", "standing arnold press", "seated arnold press", "ap", "sap", "seated ap"]], ["Preacher curl", ["preacher curl", "dumbbell preacher curl", "dumbbell preacher curl single arm", "dpc", "pcm", "pc", "dbpc"]], ["Cable bicep curl", ["cable bicep curl", "cbc"]], ["Skull crushers", ["skull crushers", "skull crusher", "sc"]], ["Single arm overhead tricep", ["single arm overhead tricep", "single arm overhead tricep curl", "saotp", "saote", "single arm tricep extension", "single arm standing tricep curl", "single arm cable rope tricep extension"]], ["Assisted dip machine", ["assisted dip machine"]], ["Barbell bicep curl", ["barbell bicep curl", "bar bicep curl", "barbell dumbbell curl", "twist bicep curl"]], ["Calf raise", ["calf raise leg press", "leg press calf raise", "seated calf raise", "standing calf raise", "calf raise"]], ["Split squat", ["bulgarian split squat", "split squat", "bulgarian", "step up", "step up"]], ["Hip thrust", ["hip thrust", "weighted bridge", "glute bridge"]], ["Tibialis raise", ["tibialis raise", "tib raise", "toe raise"]], ["Leg press", ["leg press", "seated leg press", "lp"]], ["Leg extension", ["leg extension"]], ["Leg curl", ["leg curl", "backwards leg curl"]], ["Hip adduction", ["hip adduction"]], ["Hip abduction", ["hip abduction"]], ["Lunge", ["single leg lunge", "weighted lunge"]], ["Core / side dip", ["plate side dip", "kettle bell side dip", "kb dip", "ab machine", "kettlebell squat"]]];
+const MUSCLE={"Incline chest press": "Chest", "Diagonal lateral raise": "Shoulders", "Side lateral raise": "Shoulders", "Arnold press": "Shoulders", "Shoulder press machine": "Shoulders", "Dumbbell shoulder press": "Shoulders", "Overhead tricep extension": "Triceps", "Cable tricep press": "Triceps", "Skull crushers": "Triceps", "Single arm overhead tricep": "Triceps", "Assisted dip machine": "Chest / triceps", "Assisted pull up": "Back", "Seated row machine": "Back", "Barbell curl full range": "Biceps", "Seated dumbbell curl": "Biceps", "Standing hammer curl": "Biceps", "Preacher curl": "Biceps", "Cable bicep curl": "Biceps", "Barbell bicep curl": "Biceps", "Leg press": "Legs", "Leg extension": "Legs", "Leg curl": "Legs", "Hip adduction": "Legs", "Hip abduction": "Legs", "Lunge": "Legs", "Calf raise": "Legs", "Split squat": "Legs", "Hip thrust": "Legs", "Tibialis raise": "Legs", "Core / side dip": "Core"};
 const ASSISTED=['Assisted pull up','Assisted dip machine'];
 function canon(raw){
   const n=raw.toLowerCase().replace(/\(.*?\)/g,'').replace(/[-:]/g,' ').replace(/\s+/g,' ').trim();
@@ -821,57 +822,87 @@ function variantOf(name,raw){
   return v;
 }
 function parseLog(text,bw){
-  const out=[]; let cur=null;
-  for(let line of text.split('\n')){
+  const out=[]; let cur=null, lastEx=null;
+  const SET3=/(\d+(?:\.\d+)?)\s*(?:kg)?\s*[x×]\s*(\d+)\s*[xc×]\s*(\d+)/i;
+  const SET2=/^\(?\s*(\d+(?:\.\d+)?)\s*(?:kg)?\s*[x×]\s*(\d+)\s*\)?$/i;
+  const BWEND=/(\d+)\s*[x×]\s*(\d+)\s*[x×]\s*(?:bw|body\s?weight)/i;
+  const BWSTART=/(?:bw|body\s?weight)\s*[x×]\s*(\d+)\s*[x×]\s*(\d+)/i;
+  const CARDIO=/walk|run|treadmill|stepper|plank|core|5k|bike|row erg|cycle|swim/i;
+  const capSets=t=>{
+    const sets=[];
+    let m=t.match(BWEND); if(m){ sets.push([0,+m[2],Math.min(+m[1],6)]); return sets; }
+    m=t.match(BWSTART);  if(m){ sets.push([0,+m[1],Math.min(+m[2],6)]); return sets; }
+    m=t.match(SET3);     if(m){ sets.push([+m[1],+m[2],Math.min(+m[3],6)]); return sets; }
+    m=t.trim().match(SET2); if(m){ sets.push([+m[1],+m[2],1]); return sets; }
+    return sets;
+  };
+  const isSetOnly=t=>{
+    const bare=t.replace(/\(.*?\)/g,'').trim();
+    return /^\d/.test(bare) && capSets(bare).length>0 &&
+           !/[a-z]{3}/i.test(bare.replace(/kg|bw|body\s?weight|failure|x/gi,''));
+  };
+  const addExercise=(name,chunk)=>{
+    const sets=capSets(chunk);
+    if(!sets.length){ cur.cardio.push({text:chunk.trim(),kind:'note'}); lastEx=null; return; }
+    const cn=canon(name)||name.replace(/^[-–\s]+/,'').replace(/\s+$/,'').trim()||'Unknown';
+    const v=variantOf(cn,name), assisted=ASSISTED.includes(cn);
+    lastEx={name:cn,variant:v,key:cn+' · '+v,sets,assisted,muscle: MUSCLE[cn] ||
+      (BASE.sessions.flatMap(x=>x.exercises).find(x=>x.name===cn)||{}).muscle||'Other'};
+    cur.exercises.push(lastEx);
+  };
+  const addCardio=t=>{
+    const e={text:t.trim(),kind:/run|5k/i.test(t)?'run':(/stepper/i.test(t)?'stepper':'walk')};
+    const m=t.match(/(\d+)\s*min[^0-9]*?(\d+(?:\.\d+)?)\s*(?:km|k)?\s*\/\s*(\d+(?:\.\d+)?)/i);
+    if(m){ e.mins=+m[1]; const a=+m[2],b2=+m[3]; e.speed=a>=4?a:b2; e.incline=a>=4?b2:a; }
+    else { const mm=t.match(/(\d+)\s*min/i); if(mm) e.mins=+mm[1]; }
+    cur.cardio.push(e); lastEx=null;
+  };
+  const handle=chunk=>{
+    if(!chunk || !chunk.trim() || !cur) return;
+    const t=chunk.trim();
+    if(isSetOnly(t)){
+      const sets=capSets(t);
+      if(lastEx && sets.length) lastEx.sets.push(...sets);
+      return;
+    }
+    const hasSets=capSets(t).length>0;
+    const parts=t.split(/\s[-–]\s/);
+    let name=t, body=t;
+    if(parts.length>1){ name=parts[0]; body=parts.slice(1).join(' - '); }
+    else { const d=t.match(/\d/); if(d){ name=t.slice(0,d.index).trim(); body=t.slice(d.index); } }
+    if(!hasSets || (CARDIO.test(name) && !/[x×]/.test(name))) { addCardio(t); return; }
+    addExercise(name, body);
+  };
+  for(let line of text.split(/\r?\n/)){
     line=line.trim(); if(!line) continue;
     const h=line.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2}))?\s*[-–]?\s*(.*)$/);
     if(h){
       const y=h[3]?'20'+h[3]:String(new Date().getFullYear());
       const pad=v=>String(v).padStart(2,'0');
-      cur={date:`${y}-${pad(h[2])}-${pad(h[1])}`,type:(h[4]||'?').trim()||'?',site:'Home',bw:bw,exercises:[],cardio:[],sets:0,reps:0,vol:0};
-      out.push(cur); continue;
+      const rest=(h[4]||'').trim();
+      const bits=rest.split(/\s+/);
+      const type=bits.length?bits[0].replace(/[,:]$/,''):'?';
+      cur={date:`${y}-${pad(h[2])}-${pad(h[1])}`,type:type||'?',site:'Home',bw:bw,
+           exercises:[],cardio:[],sets:0,reps:0,vol:0};
+      lastEx=null; out.push(cur);
+      const after=rest.slice(bits[0]?bits[0].length:0).trim();
+      if(after) after.split(',').forEach(handle);
+      continue;
     }
-    if(!cur) continue;
-    const sets=[]; let name=line, rest=line;
-    const split=line.split(/\s[-–]\s/);
-    if(split.length>1){ name=split[0]; rest=split.slice(1).join(' - '); }
-    else { const m=line.match(/\d/); if(m){ name=line.slice(0,m.index).trim(); rest=line.slice(m.index); } }
-    const BW=/\b(bw|body\s?weight)\b/i;
-    for(const chunk of rest.split(',')){
-      const bwEnd=chunk.match(/(\d+)\s*[x×]\s*(\d+)\s*[x×]\s*(?:bw|body\s?weight)/i);
-      const bwStart=chunk.match(/(?:bw|body\s?weight)\s*[x×]\s*(\d+)\s*[x×]\s*(\d+)/i);
-      if(bwEnd){ sets.push([0,+bwEnd[2],Math.min(+bwEnd[1],6)]); continue; }
-      if(bwStart){ sets.push([0,+bwStart[1],Math.min(+bwStart[2],6)]); continue; }
-      const m=chunk.match(/(\d+(?:\.\d+)?)\s*(?:kg)?\s*[x×]\s*(\d+)\s*[xc×]\s*(\d+)/i);
-      if(m) sets.push([+m[1],+m[2],Math.min(+m[3],6)]);
-      else { const p=chunk.trim().match(/^(\d+(?:\.\d+)?)\s*(?:kg)?\s*[x×]\s*(\d+)$/i); if(p) sets.push([+p[1],+p[2],1]); }
-    }
-    if(!sets.length && BW.test(rest)){
-      const rs=rest.match(/(\d+)\s*[x×]\s*(\d+)/);
-      if(rs) sets.push([0,+rs[2],Math.min(+rs[1],6)]);
-    }
-    if(!sets.length||/walk|run|treadmill|stepper|plank|core|5k|bike|row erg/i.test(name)){
-      const e={text:line,kind:/run|5k/i.test(line)?'run':(/stepper/i.test(line)?'stepper':'walk')};
-      const m=line.match(/(\d+)\s*min[^0-9]*?(\d+(?:\.\d+)?)\s*(?:km|k)?\s*\/\s*(\d+(?:\.\d+)?)/i);
-      if(m){ e.mins=+m[1]; const a=+m[2],b=+m[3]; e.speed=a>=4?a:b; e.incline=a>=4?b:a; }
-      cur.cardio.push(e); continue;
-    }
-    const cn=canon(name)||name.replace(/^[-\s]+/,'').trim();
-    const assisted=ASSISTED.includes(cn);
-    const top=sets.reduce((a,b)=>(b[0]*(1+Math.min(b[1],12)/30)>a[0]*(1+Math.min(a[1],12)/30)?b:a));
-    const e1=Math.max(...sets.map(([w,r])=>(assisted?bw-w:w)*(1+Math.min(r,12)/30)));
-    cur.exercises.push({
-      name:cn,variant:variantOf(cn,name),key:cn+' · '+variantOf(cn,name),
-      sets,assisted,load:+((assisted?bw-top[0]:top[0]).toFixed(1)),topReps:top[1],
-      e1rm:+e1.toFixed(1),reps:sets.reduce((a,[w,r,n])=>a+r*n,0),
-      vol:Math.round(sets.reduce((a,[w,r,n])=>a+(assisted?bw-w:w)*r*n,0)),
-      muscle:(BASE.sessions.flatMap(s=>s.exercises).find(x=>x.name===cn)||{}).muscle||'Other'
-    });
+    line.split(',').forEach(handle);
   }
-  out.forEach(s=>{
-    s.sets=s.exercises.reduce((a,e)=>a+e.sets.reduce((x,y)=>x+y[2],0),0);
-    s.reps=s.exercises.reduce((a,e)=>a+e.reps,0);
-    s.vol=s.exercises.reduce((a,e)=>a+e.vol,0);
+  out.forEach(s2=>{
+    s2.exercises.forEach(e=>{
+      const top=e.sets.reduce((a,b2)=>(b2[0]*(1+Math.min(b2[1],12)/30)>a[0]*(1+Math.min(a[1],12)/30)?b2:a));
+      e.load=+((e.assisted?bw-top[0]:top[0]).toFixed(1));
+      e.topReps=top[1];
+      e.e1rm=+Math.max(...e.sets.map(([w,r])=>(e.assisted?bw-w:w)*(1+Math.min(r,12)/30))).toFixed(1);
+      e.reps=e.sets.reduce((a,[w,r,n])=>a+r*n,0);
+      e.vol=Math.round(e.sets.reduce((a,[w,r,n])=>a+(e.assisted?bw-w:w)*r*n,0));
+    });
+    s2.sets=s2.exercises.reduce((a,e)=>a+e.sets.reduce((x,y)=>x+y[2],0),0);
+    s2.reps=s2.exercises.reduce((a,e)=>a+e.reps,0);
+    s2.vol=s2.exercises.reduce((a,e)=>a+e.vol,0);
   });
   return out;
 }
