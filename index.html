@@ -146,13 +146,46 @@ Machine shoulder press - 25 x 8 x 3
       </div>
     </details>
     <div class="card" id="k-run">
-      <h3>Add runs</h3>
-      <textarea id="runPaste" spellcheck="false" placeholder="25.08 - 3.11 mi, 30:23, 166
-28.08 - 5.1 km, 31:40, 159"></textarea>
-      <div class="row">
-        <button class="btn" id="doRuns">Add runs</button>
-        <span class="readout" id="runOut"></span>
+      <h3>Add a run</h3>
+      <div class="grid two">
+        <div><span class="field">Date</span><input id="rDate" type="date"></div>
+        <div><span class="field">Route</span><input id="rRoute" list="routeList" placeholder="Sefton Park">
+          <datalist id="routeList"></datalist></div>
       </div>
+      <div class="grid3" style="margin-top:8px">
+        <div><span class="field">Workout time</span><input id="rTime" placeholder="30:23" inputmode="numeric"></div>
+        <div><span class="field">Distance</span><input id="rDist" type="number" step="0.01" inputmode="decimal"></div>
+        <div><span class="field">Units</span><select id="rUnit"><option>mi</option><option>km</option></select></div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div><span class="field">Avg HR</span><input id="rHR" type="number" inputmode="numeric"></div>
+        <div><span class="field">Peak HR</span><input id="rPeak" type="number" inputmode="numeric"></div>
+        <div><span class="field">Cadence</span><input id="rCad" type="number" inputmode="numeric"></div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div><span class="field">Total calories</span><input id="rKcal" type="number" inputmode="numeric"></div>
+        <div><span class="field">Longest in zone</span><select id="rZone">
+          <option value="">—</option><option>1</option><option>2</option><option>3</option>
+          <option>4</option><option>5</option></select></div>
+        <div><span class="field">Time in it</span><input id="rZoneT" placeholder="14:39" inputmode="numeric"></div>
+      </div>
+      <span class="field">Note</span>
+      <input id="rNote" placeholder="Negative split, felt easy">
+      <div class="row">
+        <button class="btn" id="rSave">Save run</button>
+        <span class="readout" id="rMsg"></span>
+      </div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:13.5px;color:var(--muted)">Or paste several at once</summary>
+        <div style="margin-top:8px">
+          <textarea id="runPaste" spellcheck="false" placeholder="25.08 - 3.11 mi, 30:23, 166
+28.08 - 5.1 km, 31:40, 159"></textarea>
+          <div class="row">
+            <button class="btn ghost" id="doRuns">Add pasted runs</button>
+            <span class="readout" id="runOut"></span>
+          </div>
+        </div>
+      </details>
     </div>
     <details class="card" id="k-scan" style="padding:12px 16px">
       <summary style="cursor:pointer;font-size:14px;color:var(--muted)">Add a body scan</summary>
@@ -909,6 +942,35 @@ function drawLog(){
 }
 
 /* ---------- runs ---------- */
+function durSecs(t){
+  if(!t) return null;
+  const m=String(t).trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if(m) return (+(m[1]||0))*3600+(+m[2])*60+(+m[3]);
+  const n=parseFloat(t); return isNaN(n)?null:Math.round(n*60);
+}
+function wireRunForm(){
+  el('rDate').value=new Date().toISOString().slice(0,10);
+  const routes=[...new Set(allRuns().map(r=>r.route).filter(Boolean))].sort();
+  el('routeList').innerHTML=routes.map(r=>`<option value="${r}">`).join('');
+  el('rSave').onclick=async()=>{
+    const secs=durSecs(el('rTime').value);
+    const dist=parseFloat(el('rDist').value);
+    if(!secs||!dist){ el('rMsg').textContent='Needs at least a time and a distance'; return; }
+    const miles=el('rUnit').value==='km'?+(dist*0.621371).toFixed(2):dist;
+    const num=id=>{ const v=parseFloat(el(id).value); return isNaN(v)?null:v; };
+    const r={date:el('rDate').value, label:fmtDate(el('rDate').value),
+      route:el('rRoute').value.trim(), secs, miles, pace:+(secs/60/miles).toFixed(3),
+      hr:num('rHR'), peak:num('rPeak'), cad:num('rCad'), kcal:num('rKcal'),
+      zone:el('rZone').value?+el('rZone').value:null, zoneSecs:durSecs(el('rZoneT').value),
+      note:el('rNote').value.trim()};
+    Object.keys(r).forEach(k=>{ if(r[k]===null||r[k]==='') delete r[k]; });
+    extra.runs=[...(extra.runs||[]),r].sort((a,b)=>a.date<b.date?-1:1);
+    const ok=await save();
+    el('rMsg').textContent=(ok?'Saved — ':'Saved here only — ')+`${miles} mi at ${paceTxt(r.pace)}/mi`;
+    ['rTime','rDist','rHR','rPeak','rCad','rKcal','rZoneT','rNote'].forEach(i=>el(i).value='');
+    D=merge(); rail(); drawRuns(); drawLog();
+  };
+}
 function parseRuns(text){
   const out=[];
   for(let line of text.split('\n')){
@@ -944,16 +1006,19 @@ function drawRuns(){
   const P=R.map(r=>r.pace??null);
   chart('c-runpace',{x:lab, pos, bands, series:[{y:P,color:'var(--slate)'}], marks,
     yFmt:v=>paceTxt(v), readout:'r-runpace',
-    tip:i=>`${R[i].label}${R[i].date?', '+fmtDate(R[i].date):''} — ${R[i].miles??'?'} mi in ${durTxt(R[i].secs)}${R[i].pace?' at '+paceTxt(R[i].pace)+'/mi':''}${R[i].hr?', '+R[i].hr+' bpm':''}`});
+    tip:i=>`${R[i].label} — ${R[i].miles??'?'} mi in ${durTxt(R[i].secs)}${R[i].pace?' at '+paceTxt(R[i].pace)+'/mi':''}${R[i].hr?', '+R[i].hr+' bpm':''}${R[i].kcal?', '+R[i].kcal+' cal':''}`});
   chart('c-runhr',{x:lab, pos, bands,
     series:[{y:R.map(r=>r.hr??null),color:'var(--oxide)'},
             {y:R.map(r=>r.peak??null),color:'var(--ochre)',w:1.4,dots:false}],
     yFmt:v=>v.toFixed(0), readout:'r-runhr',
-    tip:i=>`${R[i].label} — ${R[i].hr??'?'} bpm average${R[i].peak?', '+R[i].peak+' peak':''}${R[i].route?' · '+R[i].route:''}`});
-  el('t-runs').innerHTML='<tr><th>Run</th><th>Date</th><th class="hide-sm">Where</th><th class="hide-sm">Time</th><th>Miles</th><th>Pace</th><th>Avg HR</th></tr>'+
-    R.map(r=>`<tr><td>${r.label}</td><td style="text-align:left;color:var(--muted)">${fmtDate(r.date)}</td><td class="hide-sm" style="text-align:left;color:var(--muted)">${r.route||''}</td>
-      <td class="num hide-sm">${durTxt(r.secs)}</td><td class="num">${r.miles??''}</td>
-      <td class="num">${r.pace?paceTxt(r.pace):''}</td><td class="num">${r.hr??''}</td></tr>`).join('');
+    tip:i=>`${R[i].label} — ${R[i].hr??'?'} bpm average${R[i].peak?', '+R[i].peak+' peak':''}${R[i].zone?' · longest in zone '+R[i].zone+(R[i].zoneSecs?' for '+durTxt(R[i].zoneSecs):''):''}${R[i].route?' · '+R[i].route:''}`});
+  el('t-runs').innerHTML='<tr><th>Run</th><th class="hide-sm">Where</th><th>Time</th><th>Miles</th><th>Pace</th><th>Avg HR</th><th class="hide-sm">Cadence</th><th class="hide-sm">Cal</th><th class="hide-sm">Zone</th></tr>'+
+    R.map(r=>`<tr><td>${fmtDate(r.date)}${r.label&&!/^\d/.test(r.label)?' · '+r.label:''}</td>
+      <td class="hide-sm" style="text-align:left;color:var(--muted)">${r.route||''}</td>
+      <td class="num">${durTxt(r.secs)}</td><td class="num">${r.miles??''}</td>
+      <td class="num">${r.pace?paceTxt(r.pace):''}</td><td class="num">${r.hr??''}</td>
+      <td class="num hide-sm">${r.cad??''}</td><td class="num hide-sm">${r.kcal??''}</td>
+      <td class="num hide-sm">${r.zone?('Z'+r.zone+(r.zoneSecs?' '+durTxt(r.zoneSecs):'')):''}</td></tr>`).join('');
 }
 
 /* ---------- parser (same notation as the log) ---------- */
@@ -1157,7 +1222,7 @@ function drawAll(){
 (async()=>{
   await load();
   D=merge();
-  buildNav(); rail(); wireAdd(); wireQuick(); drawLog(); wireThemes();
+  buildNav(); rail(); wireAdd(); wireQuick(); wireRunForm(); drawLog(); wireThemes();
   window.addEventListener('resize',()=>drawAll());
 })();
 </script>
