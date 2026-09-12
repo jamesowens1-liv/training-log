@@ -56,7 +56,7 @@
   }
   .draft{font-size:13.5px;border-bottom:1px solid var(--rule);padding:7px 0;display:flex;
          justify-content:space-between;gap:10px;align-items:center}
-  .draft button{font:inherit;font-size:12px;background:none;border:1px solid var(--rule);
+  .draft button,button.delrun{font:inherit;font-size:12px;background:none;border:1px solid var(--rule);
                 color:var(--muted);border-radius:2px;padding:2px 7px;cursor:pointer}
   .field{display:block;font-size:12.5px;color:var(--muted);margin:8px 0 2px}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
@@ -153,7 +153,7 @@ Machine shoulder press - 25 x 8 x 3
           <datalist id="routeList"></datalist></div>
       </div>
       <div class="grid3" style="margin-top:8px">
-        <div><span class="field">Workout time</span><input id="rTime" placeholder="30:23" inputmode="numeric"></div>
+        <div><span class="field">Workout time</span><input id="rTime" placeholder="30:23" inputmode="numeric" autocomplete="off"></div>
         <div><span class="field">Distance</span><input id="rDist" type="number" step="0.01" inputmode="decimal"></div>
         <div><span class="field">Units</span><select id="rUnit"><option>mi</option><option>km</option></select></div>
       </div>
@@ -167,7 +167,7 @@ Machine shoulder press - 25 x 8 x 3
         <div><span class="field">Longest in zone</span><select id="rZone">
           <option value="">—</option><option>1</option><option>2</option><option>3</option>
           <option>4</option><option>5</option></select></div>
-        <div><span class="field">Time in it</span><input id="rZoneT" placeholder="14:39" inputmode="numeric"></div>
+        <div><span class="field">Time in it</span><input id="rZoneT" placeholder="14:39" inputmode="numeric" autocomplete="off"></div>
       </div>
       <span class="field">Note</span>
       <input id="rNote" placeholder="Negative split, felt easy">
@@ -943,13 +943,30 @@ function drawLog(){
 
 /* ---------- runs ---------- */
 function durSecs(t){
-  if(!t) return null;
-  const m=String(t).trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if(t===null||t===undefined||t==='') return null;
+  const raw=String(t).trim();
+  const m=raw.match(/^(?:(\d+):)?(\d{1,3}):(\d{2})$/);
   if(m) return (+(m[1]||0))*3600+(+m[2])*60+(+m[3]);
-  const n=parseFloat(t); return isNaN(n)?null:Math.round(n*60);
+  const d=raw.replace(/\D/g,'');
+  if(!d) return null;
+  if(d.length<=2) return +d*60;                                  // 30 -> 30 min
+  const sec=+d.slice(-2), min=+d.slice(-4,-2)||0, hr=+d.slice(0,-4)||0;
+  return hr*3600+min*60+sec;
+}
+function maskTime(input){
+  input.addEventListener('input',()=>{
+    const pos=input.selectionStart===input.value.length;
+    let d=input.value.replace(/\D/g,'').slice(0,6);
+    let out=d;
+    if(d.length>2) out=d.slice(0,-2)+':'+d.slice(-2);
+    if(d.length>4) out=d.slice(0,-4)+':'+d.slice(-4,-2)+':'+d.slice(-2);
+    input.value=out;
+    if(pos) input.setSelectionRange(out.length,out.length);
+  });
 }
 function wireRunForm(){
   el('rDate').value=new Date().toISOString().slice(0,10);
+  maskTime(el('rTime')); maskTime(el('rZoneT'));
   const routes=[...new Set(allRuns().map(r=>r.route).filter(Boolean))].sort();
   el('routeList').innerHTML=routes.map(r=>`<option value="${r}">`).join('');
   el('rSave').onclick=async()=>{
@@ -957,9 +974,14 @@ function wireRunForm(){
     const dist=parseFloat(el('rDist').value);
     if(!secs||!dist){ el('rMsg').textContent='Needs at least a time and a distance'; return; }
     const miles=el('rUnit').value==='km'?+(dist*0.621371).toFixed(2):dist;
+    const pace=secs/60/miles;
+    if(pace<3||pace>40){
+      el('rMsg').textContent=`That works out at ${paceTxt(pace)} a mile — check the time reads like 30:23`;
+      return;
+    }
     const num=id=>{ const v=parseFloat(el(id).value); return isNaN(v)?null:v; };
     const r={date:el('rDate').value, label:fmtDate(el('rDate').value),
-      route:el('rRoute').value.trim(), secs, miles, pace:+(secs/60/miles).toFixed(3),
+      route:el('rRoute').value.trim(), secs, miles, pace:+pace.toFixed(3),
       hr:num('rHR'), peak:num('rPeak'), cad:num('rCad'), kcal:num('rKcal'),
       zone:el('rZone').value?+el('rZone').value:null, zoneSecs:durSecs(el('rZoneT').value),
       note:el('rNote').value.trim()};
@@ -1012,13 +1034,18 @@ function drawRuns(){
             {y:R.map(r=>r.peak??null),color:'var(--ochre)',w:1.4,dots:false}],
     yFmt:v=>v.toFixed(0), readout:'r-runhr',
     tip:i=>`${R[i].label} — ${R[i].hr??'?'} bpm average${R[i].peak?', '+R[i].peak+' peak':''}${R[i].zone?' · longest in zone '+R[i].zone+(R[i].zoneSecs?' for '+durTxt(R[i].zoneSecs):''):''}${R[i].route?' · '+R[i].route:''}`});
-  el('t-runs').innerHTML='<tr><th>Run</th><th class="hide-sm">Where</th><th>Time</th><th>Miles</th><th>Pace</th><th>Avg HR</th><th class="hide-sm">Cadence</th><th class="hide-sm">Cal</th><th class="hide-sm">Zone</th></tr>'+
+  el('t-runs').innerHTML='<tr><th>Run</th><th class="hide-sm">Where</th><th>Time</th><th>Miles</th><th>Pace</th><th>Avg HR</th><th class="hide-sm">Cadence</th><th class="hide-sm">Cal</th><th class="hide-sm">Zone</th><th></th></tr>'+
     R.map(r=>`<tr><td>${fmtDate(r.date)}${r.label&&!/^\d/.test(r.label)?' · '+r.label:''}</td>
       <td class="hide-sm" style="text-align:left;color:var(--muted)">${r.route||''}</td>
       <td class="num">${durTxt(r.secs)}</td><td class="num">${r.miles??''}</td>
       <td class="num">${r.pace?paceTxt(r.pace):''}</td><td class="num">${r.hr??''}</td>
       <td class="num hide-sm">${r.cad??''}</td><td class="num hide-sm">${r.kcal??''}</td>
-      <td class="num hide-sm">${r.zone?('Z'+r.zone+(r.zoneSecs?' '+durTxt(r.zoneSecs):'')):''}</td></tr>`).join('');
+      <td class="num hide-sm">${r.zone?('Z'+r.zone+(r.zoneSecs?' '+durTxt(r.zoneSecs):'')):''}</td>
+      <td>${r.added?`<button class="delrun" data-d="${r.date}" data-s="${r.secs}">remove</button>`:''}</td></tr>`).join('');
+  el('t-runs').querySelectorAll('.delrun').forEach(btn=>btn.onclick=async()=>{
+    extra.runs=(extra.runs||[]).filter(x=>!(x.date===btn.dataset.d && String(x.secs)===btn.dataset.s));
+    await save(); D=merge(); rail(); drawRuns(); drawLog();
+  });
 }
 
 /* ---------- parser (same notation as the log) ---------- */
