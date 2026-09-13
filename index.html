@@ -118,6 +118,27 @@
         <button class="btn ghost" id="qLoad">Load the whole day</button>
         <span class="readout" id="qMsg"></span>
       </div>
+      <div style="border-top:1px solid var(--rule);margin-top:14px;padding-top:10px">
+        <span class="field" style="margin-top:0">Cardio or class in the same session</span>
+        <div class="grid3">
+          <select id="cKind">
+            <option value="walk">Treadmill walk</option>
+            <option value="stepper">Stair stepper</option>
+            <option value="run">Treadmill run</option>
+            <option value="class">Core or class</option>
+            <option value="bike">Bike</option>
+          </select>
+          <input id="cMins" type="number" inputmode="numeric" placeholder="mins">
+          <input id="cNote" placeholder="note">
+        </div>
+        <div class="grid two" style="margin-top:8px">
+          <div><span class="field" style="margin-top:0">Speed, km/h</span>
+            <input id="cSpeed" type="number" step="0.1" inputmode="decimal"></div>
+          <div><span class="field" style="margin-top:0">Incline, %</span>
+            <input id="cInc" type="number" step="0.5" inputmode="decimal"></div>
+        </div>
+        <div class="row"><button class="btn ghost" id="cAdd">Add cardio</button></div>
+      </div>
       <div id="qDraft" style="margin-top:10px"></div>
       <div class="row" id="qSaveRow" style="display:none">
         <button class="btn" id="qSave">Save session</button>
@@ -748,12 +769,12 @@ function drawCardio(){
     readout:'r-cardio',
     tip:i=>`${fmtDate(pts[i].date)} — ${pts[i].mins} min at ${pts[i].speed} km/h, ${pts[i].incline}% incline`
   });
-  const groups={walk:[],stepper:[],run:[],class:[]};
+  const groups={walk:[],stepper:[],run:[],bike:[],class:[]};
   D.sessions.forEach(s=>s.cardio.forEach(c=>{
     if(c.kind==='note'||!groups[c.kind]) return;
     groups[c.kind].push(fmtDate(s.date)+' — '+c.text);
   }));
-  const title={walk:'Treadmill walks',stepper:'Stair stepper',run:'Runs in the gym log',class:'Core and classes'};
+  const title={walk:'Treadmill walks',stepper:'Stair stepper',run:'Runs in the gym log',bike:'Bike',class:'Core and classes'};
   el('cardioGrouped').innerHTML=Object.keys(title).filter(k=>groups[k].length).map(k=>
     `<h3 style="margin-top:14px">${title[k]} · ${groups[k].length}</h3>
      <div class="log">${groups[k].slice().reverse().join('\n')}</div>`).join('');
@@ -906,6 +927,7 @@ function knownKeys(){
   return byMuscle;
 }
 function finalise(s2,bw){
+  if(!s2.exercises.length){ s2.sets=0; s2.reps=0; s2.vol=0; return s2; }
   s2.exercises.forEach(e=>{
     const top=e.sets.reduce((a,b2)=>(b2[0]*(1+Math.min(b2[1],12)/30)>a[0]*(1+Math.min(a[1],12)/30)?b2:a));
     e.load=+((e.assisted?bw-top[0]:top[0]).toFixed(1));
@@ -922,6 +944,8 @@ function finalise(s2,bw){
 function showDraft(){
   el('qSaveRow').style.display=draft.length?'flex':'none';
   el('qDraft').innerHTML=draft.map((d,i)=>{
+    if(d.cardio) return `<div class="draft"><span>${d.cardio.text}</span>
+      <button data-del="${i}">remove</button></div>`;
     const [w,r,n]=d.sets[0];
     return `<div class="draft" style="display:block">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -976,15 +1000,35 @@ function wireQuick(){
     saveDraft(); showDraft();
     el('qMsg').textContent=`Day ${el('qType').value} loaded — adjust and save`;
   };
+  el('cAdd').onclick=()=>{
+    const kind=el('cKind').value, mins=parseFloat(el('cMins').value);
+    const sp=parseFloat(el('cSpeed').value), inc=parseFloat(el('cInc').value);
+    const note=el('cNote').value.trim();
+    if(!mins && !note){ el('qMsg').textContent='Cardio needs at least a number of minutes'; return; }
+    const label={walk:'walk',stepper:'stair stepper',run:'run',class:'core or class',bike:'bike'}[kind];
+    let text=(mins?mins+' min ':'')+label;
+    if(!isNaN(sp)) text+=' '+sp+'km'+(!isNaN(inc)?'/'+inc:'');
+    else if(!isNaN(inc)) text+=' '+inc+'% incline';
+    if(note) text+=' — '+note;
+    const c={text,kind};
+    if(mins) c.mins=mins;
+    if(!isNaN(sp)) c.speed=sp;
+    if(!isNaN(inc)) c.incline=inc;
+    draft.push({cardio:c});
+    saveDraft(); showDraft();
+    ['cMins','cSpeed','cInc','cNote'].forEach(i=>el(i).value='');
+    el('qMsg').textContent='Cardio added';
+  };
   el('qClear').onclick=()=>{ draft=[]; saveDraft(); showDraft(); };
   el('qSave').onclick=async()=>{
+    if(!draft.length){ el('qMsg').textContent='Nothing to save yet'; return; }
     const bw=D.body.weight.filter(x=>x!=null).slice(-1)[0]||80;
     const s2={date:el('qDate').value,type:el('qType').value,site:'Home',bw,
-      exercises:draft.filter(d=>d.sets[0][1]>0).map(d=>{
+      exercises:draft.filter(d=>!d.cardio && d.sets[0][1]>0).map(d=>{
         const nm=d.key.split(' · ')[0];
         return {name:nm,variant:d.key.split(' · ')[1]||'Dumbbell',key:d.key,sets:d.sets,
           assisted:ASSISTED.includes(nm),muscle:MUSCLE[nm]||'Other'};
-      }),cardio:[],sets:0,reps:0,vol:0};
+      }),cardio:draft.filter(d=>d.cardio).map(d=>d.cardio),sets:0,reps:0,vol:0};
     extra.sessions.push(finalise(s2,bw));
     draft=[]; saveDraft(); showDraft();
     const ok=await save();
