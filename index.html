@@ -842,12 +842,12 @@ function wireThemes(){
 /* ---------- the programme ---------- */
 const PLANS={
  A:{name:'Chest, shoulders, triceps', items:[
-  ['Incline chest press · Dumbbell','8–10',3],
-  ['Incline chest press · Machine','10–12',3],
+  ['Incline chest press · Machine','8–10',3],
   ['Shoulder press machine · Machine','8–10',3],
+  ['Assisted dip machine · Machine','8–10',3],
+  ['Incline chest press · Dumbbell','10–12',3],
   ['Diagonal lateral raise · Dumbbell','12–15',3],
   ['Overhead tricep extension · Dumbbell','8–10',3],
-  ['Assisted dip machine · Machine','8–10',3],
   ['Side dip · Plate','10 each side',3]]},
  B:{name:'Back, biceps, quad exposure', items:[
   ['Leg press · Machine','10–12',3],
@@ -886,7 +886,7 @@ function drawPlan(){
      <tr><th>Exercise</th><th>Sets × reps</th><th>Last done</th></tr>`+
      p.items.map(([key,reps,sets])=>{
        const l=lastFor(key);
-       return `<tr><td>${key.split(' · ')[0]}</td><td class="num">${sets} × ${reps}</td>
+       return `<tr><td>${key.split(' · ')[0]}<span style="color:var(--muted)"> · ${key.split(' · ')[1]||''}</span></td><td class="num">${sets} × ${reps}</td>
          <td class="num" style="color:var(--muted)">${l?((l.load?l.load+' kg':'BW')+' × '+l.topReps):'—'}</td></tr>`;
      }).join('')+'</table></div>').join('');
 }
