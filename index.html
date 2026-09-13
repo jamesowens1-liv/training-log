@@ -115,6 +115,7 @@
         <input type="checkbox" id="qBW" style="width:auto;margin-right:6px">Bodyweight</label>
       <div class="row">
         <button class="btn" id="qAdd">Add exercise</button>
+        <button class="btn ghost" id="qLoad">Load the whole day</button>
         <span class="readout" id="qMsg"></span>
       </div>
       <div id="qDraft" style="margin-top:10px"></div>
@@ -323,6 +324,12 @@ Machine shoulder press - 25 x 8 x 3
   <!-- ============ TRAINING ============ -->
   <section class="panel" id="p-train">
     <h2>Training pattern</h2>
+    <div class="card">
+      <h3>The programme</h3>
+      <p style="font-size:13.5px">Four-session rolling cycle: A, B, C, L, then round again.
+        "Last done" is the most recent weight and reps in your log, so it's what to beat.</p>
+      <div id="planTables"></div>
+    </div>
     <div class="card">
       <h3>Sessions each month</h3>
       <svg class="chart" id="c-sessions" viewBox="0 0 720 250" role="img" aria-label="Sessions per month"></svg>
@@ -681,6 +688,7 @@ function drawLifts(){
 }
 
 function drawTrain(){
+  drawPlan();
   const S=D.sessions;
   const months=[...new Set(S.map(s=>s.date.slice(0,7)))].sort();
   const counts=months.map(m=>S.filter(s=>s.date.slice(0,7)===m).length);
@@ -831,6 +839,58 @@ function wireThemes(){
   applyTheme(saved);
 }
 
+/* ---------- the programme ---------- */
+const PLANS={
+ A:{name:'Chest, shoulders, triceps', items:[
+  ['Incline chest press · Dumbbell','8–10',3],
+  ['Incline chest press · Machine','10–12',3],
+  ['Shoulder press machine · Machine','8–10',3],
+  ['Diagonal lateral raise · Dumbbell','12–15',3],
+  ['Overhead tricep extension · Dumbbell','8–10',3],
+  ['Assisted dip machine · Machine','8–10',3],
+  ['Side dip · Plate','10 each side',3]]},
+ B:{name:'Back, biceps, quad exposure', items:[
+  ['Leg press · Machine','10–12',3],
+  ['Assisted pull up · Machine','6–8',3],
+  ['Seated row machine · Machine','8–10',3],
+  ['Single arm dumbbell row · Dumbbell','10–12',3],
+  ['Barbell curl full range · Barbell','8–10',3],
+  ['Standing hammer curl · Dumbbell','8–10',3]]},
+ C:{name:'Arms and shoulders', items:[
+  ['Arnold press · Dumbbell','8–10',3],
+  ['Side lateral raise · Dumbbell','12–15',3],
+  ['Preacher curl · Dumbbell','8–10',3],
+  ['Cable bicep curl · Cable','10–12',3],
+  ['Overhead tricep extension · Plate','10–12',3],
+  ['Single arm overhead tricep · Dumbbell','8–10',3],
+  ['Core machine · Machine','—',3]]},
+ L:{name:'Legs', items:[
+  ['Split squat · Bodyweight','8–10 per leg',3],
+  ['Hip thrust · Dumbbell','8–12',3],
+  ['Leg curl · Machine','10–12',3],
+  ['Leg extension · Machine','12–15',3],
+  ['Hip adduction · Machine','12–15',2],
+  ['Calf raise · Dumbbell','12–15',3],
+  ['Tibialis raise · Bodyweight','15',2]]}
+};
+function lastFor(key){
+  let hit=null;
+  D.sessions.forEach(s=>s.exercises.forEach(e=>{ if(e.key===key) hit=e; }));
+  return hit;
+}
+function midReps(t){ const m=String(t).match(/(\d+)\s*[–-]\s*(\d+)/); 
+  if(m) return Math.round((+m[1]+ +m[2])/2); const n=String(t).match(/\d+/); return n?+n[0]:8; }
+function drawPlan(){
+  el('planTables').innerHTML=Object.entries(PLANS).map(([k,p])=>
+    `<h3 style="margin-top:16px">Day ${k} — ${p.name}</h3><div class="tablewrap"><table>
+     <tr><th>Exercise</th><th>Sets × reps</th><th>Last done</th></tr>`+
+     p.items.map(([key,reps,sets])=>{
+       const l=lastFor(key);
+       return `<tr><td>${key.split(' · ')[0]}</td><td class="num">${sets} × ${reps}</td>
+         <td class="num" style="color:var(--muted)">${l?((l.load?l.load+' kg':'BW')+' × '+l.topReps):'—'}</td></tr>`;
+     }).join('')+'</table></div>').join('');
+}
+
 /* ---------- quick add ---------- */
 let draft=[];
 function knownKeys(){
@@ -861,11 +921,26 @@ function finalise(s2,bw){
 }
 function showDraft(){
   el('qSaveRow').style.display=draft.length?'flex':'none';
-  el('qDraft').innerHTML=draft.map((d,i)=>
-    `<div class="draft"><span>${d.key.split(' · ')[0]} — ${d.sets[0][0]?d.sets[0][0]+' kg':'BW'}
-     × ${d.sets[0][1]} × ${d.sets[0][2]}</span><button data-i="${i}">remove</button></div>`).join('');
-  el('qDraft').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    draft.splice(+b.dataset.i,1); saveDraft(); showDraft(); });
+  el('qDraft').innerHTML=draft.map((d,i)=>{
+    const [w,r,n]=d.sets[0];
+    return `<div class="draft" style="display:block">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <b style="font-weight:600">${d.key.split(' · ')[0]}</b>
+        <button data-del="${i}">remove</button></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${(d.key.split(' · ')[1]||'')}${d.target?' · target '+d.target:''}</div>
+      <div class="grid3" style="margin-top:6px">
+        <input data-f="w" data-i="${i}" type="number" step="0.5" inputmode="decimal" value="${w||''}" placeholder="kg / BW">
+        <input data-f="r" data-i="${i}" type="number" inputmode="numeric" value="${r||''}" placeholder="reps">
+        <input data-f="s" data-i="${i}" type="number" inputmode="numeric" value="${n||''}" placeholder="sets">
+      </div></div>`;
+  }).join('');
+  el('qDraft').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    draft.splice(+b.dataset.del,1); saveDraft(); showDraft(); });
+  el('qDraft').querySelectorAll('input').forEach(inp=>inp.onchange=()=>{
+    const i=+inp.dataset.i, v=parseFloat(inp.value)||0;
+    const idx={w:0,r:1,s:2}[inp.dataset.f];
+    draft[i].sets[0][idx]=v; saveDraft();
+  });
 }
 function saveDraft(){ try{ localStorage.setItem('papaver-draft',JSON.stringify(draft)); }catch(e){} }
 function wireQuick(){
@@ -890,11 +965,22 @@ function wireQuick(){
     saveDraft(); showDraft();
     el('qMsg').textContent='Added'; el('qR').value=''; if(!bw) el('qW').value='';
   };
+  el('qLoad').onclick=()=>{
+    const p2=PLANS[el('qType').value];
+    if(!p2){ el('qMsg').textContent='No plan for that day yet'; return; }
+    p2.items.forEach(([key,reps,sets])=>{
+      const l=lastFor(key);
+      draft.push({key,target:`${sets} × ${reps}`,
+        sets:[[l?l.load:0, l?l.topReps:midReps(reps), sets]]});
+    });
+    saveDraft(); showDraft();
+    el('qMsg').textContent=`Day ${el('qType').value} loaded — adjust and save`;
+  };
   el('qClear').onclick=()=>{ draft=[]; saveDraft(); showDraft(); };
   el('qSave').onclick=async()=>{
     const bw=D.body.weight.filter(x=>x!=null).slice(-1)[0]||80;
     const s2={date:el('qDate').value,type:el('qType').value,site:'Home',bw,
-      exercises:draft.map(d=>{
+      exercises:draft.filter(d=>d.sets[0][1]>0).map(d=>{
         const nm=d.key.split(' · ')[0];
         return {name:nm,variant:d.key.split(' · ')[1]||'Dumbbell',key:d.key,sets:d.sets,
           assisted:ASSISTED.includes(nm),muscle:MUSCLE[nm]||'Other'};
@@ -1031,7 +1117,7 @@ function drawRuns(){
     tip:i=>`${R[i].label} — ${R[i].miles??'?'} mi in ${durTxt(R[i].secs)}${R[i].pace?' at '+paceTxt(R[i].pace)+'/mi':''}${R[i].hr?', '+R[i].hr+' bpm':''}${R[i].kcal?', '+R[i].kcal+' cal':''}`});
   chart('c-runhr',{x:lab, pos, bands,
     series:[{y:R.map(r=>r.hr??null),color:'var(--oxide)'},
-            {y:R.map(r=>r.peak??null),color:'var(--ochre)',w:1.4,dots:false}],
+            {y:R.map(r=>r.peak??null),color:'var(--ochre)',w:1.4}],
     yFmt:v=>v.toFixed(0), readout:'r-runhr',
     tip:i=>`${R[i].label} — ${R[i].hr??'?'} bpm average${R[i].peak?', '+R[i].peak+' peak':''}${R[i].zone?' · longest in zone '+R[i].zone+(R[i].zoneSecs?' for '+durTxt(R[i].zoneSecs):''):''}${R[i].route?' · '+R[i].route:''}`});
   el('t-runs').innerHTML='<tr><th>Run</th><th class="hide-sm">Where</th><th>Time</th><th>Miles</th><th>Pace</th><th>Avg HR</th><th class="hide-sm">Cadence</th><th class="hide-sm">Cal</th><th class="hide-sm">Zone</th><th></th></tr>'+
