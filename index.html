@@ -98,28 +98,33 @@
     <div class="card" id="k-training">
       <h3>Today's session</h3>
       <div class="grid two">
-        <div><span class="field">Date</span><input id="qDate" type="date"></div>
-        <div><span class="field">Day</span>
+        <div><span class="field" style="margin-top:0">Date</span><input id="qDate" type="date"></div>
+        <div><span class="field" style="margin-top:0">Day</span>
           <select id="qType"><option>A</option><option>B</option><option>C</option>
           <option>L</option><option>Cardio</option><option>Other</option></select></div>
       </div>
-      <span class="field">Exercise</span>
-      <select id="qEx"></select>
-      <input id="qOther" placeholder="Name of the new exercise" style="display:none;margin-top:6px">
-      <div class="grid3" style="margin-top:8px">
-        <div><span class="field">Weight</span><input id="qW" type="number" step="0.5" inputmode="decimal"></div>
-        <div><span class="field">Reps</span><input id="qR" type="number" inputmode="numeric"></div>
-        <div><span class="field">Sets</span><input id="qS" type="number" inputmode="numeric" value="3"></div>
-      </div>
-      <label style="display:block;font-size:13px;color:var(--muted);margin-top:8px">
-        <input type="checkbox" id="qBW" style="width:auto;margin-right:6px">Bodyweight</label>
       <div class="row">
-        <button class="btn" id="qAdd">Add exercise</button>
-        <button class="btn ghost" id="qLoad">Load the whole day</button>
+        <button class="btn" id="qLoad">Load the whole day</button>
         <span class="readout" id="qMsg"></span>
       </div>
+      <div id="qDraft" style="margin-top:10px"></div>
+      <details style="border-top:1px solid var(--rule);margin-top:14px;padding-top:10px">
+        <summary style="cursor:pointer;font-size:13.5px;color:var(--muted)">Add another exercise</summary>
+        <div style="margin-top:8px">
+          <select id="qEx"></select>
+          <input id="qOther" placeholder="Name of the new exercise" style="display:none;margin-top:6px">
+          <div class="grid3" style="margin-top:8px">
+            <div><span class="field" style="margin-top:0">Weight</span><input id="qW" type="number" step="0.5" inputmode="decimal"></div>
+            <div><span class="field" style="margin-top:0">Reps</span><input id="qR" type="number" inputmode="numeric"></div>
+            <div><span class="field" style="margin-top:0">Sets</span><input id="qS" type="number" inputmode="numeric" value="3"></div>
+          </div>
+          <label style="display:block;font-size:13px;color:var(--muted);margin-top:8px">
+            <input type="checkbox" id="qBW" style="width:auto;margin-right:6px">Bodyweight</label>
+          <div class="row"><button class="btn ghost" id="qAdd">Add exercise</button></div>
+        </div>
+      </details>
       <div style="border-top:1px solid var(--rule);margin-top:14px;padding-top:10px">
-        <span class="field" style="margin-top:0">Cardio or class in the same session</span>
+        <span class="field" style="margin-top:0">Cardio to finish</span>
         <div class="grid3">
           <select id="cKind">
             <option value="walk">Treadmill walk</option>
@@ -139,7 +144,6 @@
         </div>
         <div class="row"><button class="btn ghost" id="cAdd">Add cardio</button></div>
       </div>
-      <div id="qDraft" style="margin-top:10px"></div>
       <div class="row" id="qSaveRow" style="display:none">
         <button class="btn" id="qSave">Save session</button>
         <button class="btn ghost" id="qClear">Discard</button>
@@ -233,6 +237,12 @@ Machine shoulder press - 25 x 8 x 3
     </div>
       </div>
     </details>
+    <div class="card">
+      <h3>Recent entries</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Only things you've added, and only
+        the last fortnight. Editing loads it back into the box above and marks it as edited.</p>
+      <div id="recent"></div>
+    </div>
     <div class="card">
       <h3>Where things stand</h3>
       <div id="standings"></div>
@@ -336,9 +346,9 @@ Machine shoulder press - 25 x 8 x 3
     <div class="card">
       <h3>Every tracked lift, first session to last</h3>
       <div class="tablewrap"><table id="t-lifts"></table></div>
-      <p class="note">On the assisted pull-up and dip machines the number logged is help given, not work
-        done. These rows show bodyweight minus assistance, so they fall when you get stronger and
-        also move when your weight changes.</p>
+      <p class="note">Log the number shown on the assisted pull-up and dip machines — the help given.
+        These rows convert it to the work actually done, bodyweight minus assistance, so the figure
+        rises as the assistance falls.</p>
     </div>
   </section>
 
@@ -907,8 +917,12 @@ function drawPlan(){
      <tr><th>Exercise</th><th>Sets × reps</th><th>Last done</th></tr>`+
      p.items.map(([key,reps,sets])=>{
        const l=lastFor(key);
-       return `<tr><td>${key.split(' · ')[0]}<span style="color:var(--muted)"> · ${key.split(' · ')[1]||''}</span></td><td class="num">${sets} × ${reps}</td>
-         <td class="num" style="color:var(--muted)">${l?((l.load?l.load+' kg':'BW')+' × '+l.topReps):'—'}</td></tr>`;
+       const nm=key.split(' · ')[0];
+       const rawTop=l?l.sets.reduce((a,b2)=>b2[0]>a[0]?b2:a)[0]:null;
+       const shown=!l?'—':ASSISTED.includes(nm)?(rawTop+' kg assist × '+l.topReps)
+                     :((l.load?l.load+' kg':'BW')+' × '+l.topReps);
+       return `<tr><td>${nm}<span style="color:var(--muted)"> · ${key.split(' · ')[1]||''}</span></td><td class="num">${sets} × ${reps}</td>
+         <td class="num" style="color:var(--muted)">${shown}</td></tr>`;
      }).join('')+'</table></div>').join('');
 }
 
@@ -953,7 +967,7 @@ function showDraft(){
         <button data-del="${i}">remove</button></div>
       <div style="font-size:12px;color:var(--muted);margin-top:2px">${(d.key.split(' · ')[1]||'')}${d.target?' · target '+d.target:''}</div>
       <div class="grid3" style="margin-top:6px">
-        <input data-f="w" data-i="${i}" type="number" step="0.5" inputmode="decimal" value="${w||''}" placeholder="kg / BW">
+        <input data-f="w" data-i="${i}" type="number" step="0.5" inputmode="decimal" value="${w||''}" placeholder="${ASSISTED.includes(d.key.split(' · ')[0])?'assist kg':'kg'}">
         <input data-f="r" data-i="${i}" type="number" inputmode="numeric" value="${r||''}" placeholder="reps">
         <input data-f="s" data-i="${i}" type="number" inputmode="numeric" value="${n||''}" placeholder="sets">
       </div></div>`;
@@ -994,8 +1008,9 @@ function wireQuick(){
     if(!p2){ el('qMsg').textContent='No plan for that day yet'; return; }
     p2.items.forEach(([key,reps,sets])=>{
       const l=lastFor(key);
+      const rawTop=l?l.sets.reduce((a,b2)=>b2[0]>a[0]?b2:a)[0]:null;
       draft.push({key,target:`${sets} × ${reps}`,
-        sets:[[l?l.load:0, l?l.topReps:midReps(reps), sets]]});
+        sets:[[rawTop!==null?rawTop:0, l?l.topReps:midReps(reps), sets]]});
     });
     saveDraft(); showDraft();
     el('qMsg').textContent=`Day ${el('qType').value} loaded — adjust and save`;
@@ -1029,11 +1044,13 @@ function wireQuick(){
         return {name:nm,variant:d.key.split(' · ')[1]||'Dumbbell',key:d.key,sets:d.sets,
           assisted:ASSISTED.includes(nm),muscle:MUSCLE[nm]||'Other'};
       }),cardio:draft.filter(d=>d.cardio).map(d=>d.cardio),sets:0,reps:0,vol:0};
+    if(editing){ s2.edited=true; editing=false; }
     extra.sessions.push(finalise(s2,bw));
+    extra.sessions.sort((a,b)=>a.date<b.date?-1:1);
     draft=[]; saveDraft(); showDraft();
     const ok=await save();
     el('qMsg').textContent=ok?'Session saved':'Saved here only — export before closing';
-    D=merge(); rail(); drawLog();
+    D=merge(); rail(); drawLog(); drawRecent();
   };
   el('logKind').onclick=e=>{
     const b=e.target.closest('button'); if(!b) return;
@@ -1047,6 +1064,40 @@ function wireQuick(){
   el('k-run').style.display='none'; el('k-scan').style.display='none';
   showDraft();
 }
+
+function drawRecent(){
+  const cutoff=Math.floor(Date.now()/864e5)-14;
+  const rows=[];
+  (extra.sessions||[]).forEach((s2,i)=>{ if(day(s2.date)>=cutoff)
+    rows.push({kind:'session',i,date:s2.date,
+      text:`${s2.type} · ${s2.exercises.length} lifts${s2.cardio.length?', '+s2.cardio.length+' cardio':''}${s2.edited?' · edited':''}`}); });
+  (extra.runs||[]).forEach((r,i)=>{ if(day(r.date)>=cutoff)
+    rows.push({kind:'run',i,date:r.date,
+      text:`Run · ${r.miles} mi${r.pace?' at '+paceTxt(r.pace)+'/mi':''}${r.edited?' · edited':''}`}); });
+  rows.sort((a,b)=>a.date<b.date?1:-1);
+  el('recent').innerHTML=rows.length?rows.map(r=>
+    `<div class="draft"><span>${fmtDate(r.date)} — ${r.text}</span>
+     <span>${r.kind==='session'?`<button data-edit="${r.i}">edit</button> `:''}
+     <button data-rm="${r.kind}:${r.i}">remove</button></span></div>`).join('')
+    : '<p style="font-size:13px;color:var(--muted)">Nothing added in the last fortnight.</p>';
+  el('recent').querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{
+    const [k,i]=b.dataset.rm.split(':');
+    (k==='session'?extra.sessions:extra.runs).splice(+i,1);
+    await save(); D=merge(); rail(); drawLog(); drawRecent();
+  });
+  el('recent').querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{
+    const s2=extra.sessions[+b.dataset.edit];
+    draft=s2.exercises.map(e=>({key:e.key,sets:[[e.sets[0][0],e.sets[0][1],e.sets.reduce((a,x)=>a+x[2],0)]]}))
+      .concat(s2.cardio.map(c=>({cardio:c})));
+    el('qDate').value=s2.date; el('qType').value=s2.type;
+    extra.sessions.splice(+b.dataset.edit,1);
+    editing=true;
+    await save(); saveDraft(); showDraft(); D=merge(); rail(); drawLog(); drawRecent();
+    el('qMsg').textContent='Loaded for editing — save when you are done';
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+}
+let editing=false;
 
 /* ---------- log summary ---------- */
 function drawLog(){
@@ -1119,6 +1170,7 @@ function wireRunForm(){
     extra.runs=[...(extra.runs||[]),r].sort((a,b)=>a.date<b.date?-1:1);
     const ok=await save();
     el('rMsg').textContent=(ok?'Saved — ':'Saved here only — ')+`${miles} mi at ${paceTxt(r.pace)}/mi`;
+    drawRecent();
     ['rTime','rDist','rHR','rPeak','rCad','rKcal','rZoneT','rNote'].forEach(i=>el(i).value='');
     D=merge(); rail(); drawRuns(); drawLog();
   };
@@ -1379,7 +1431,7 @@ function drawAll(){
 (async()=>{
   await load();
   D=merge();
-  buildNav(); rail(); wireAdd(); wireQuick(); wireRunForm(); drawLog(); wireThemes();
+  buildNav(); rail(); wireAdd(); wireQuick(); wireRunForm(); drawLog(); drawRecent(); wireThemes();
   window.addEventListener('resize',()=>drawAll());
 })();
 </script>
