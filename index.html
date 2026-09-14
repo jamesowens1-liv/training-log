@@ -466,6 +466,7 @@ const KEY='gym-log-2026';
 async function load(){
   try{ const raw=localStorage.getItem(KEY); if(raw) extra=JSON.parse(raw); }catch(e){}
   if(!extra.sessions) extra.sessions=[];
+  migrate(extra.sessions);
   if(!extra.scans) extra.scans=[];
   if(!extra.runs) extra.runs=[];
 }
@@ -1329,6 +1330,28 @@ function drawRuns(){
 const ALIASES=[["Chest press", ["incline chest press", "lie down chest press", "lie down barbell chest press", "chest press machine", "machine chest press", "chest press"]], ["Lateral raise", ["diagonal lateral raise", "single arm diagonal lateral raise", "dlr", "d/slr", "side lateral raise", "side slr", "slr", "lateral raise"]], ["Overhead tricep extension", ["overhead tricep extension", "seated overhead tricep extension", "overhead tricep curl", "ote", "overhead plate extension", "tricep extension machine", "plate tricep curl", "plate tricep press"]], ["Shoulder press", ["shoulder press machine", "machine shoulder press", "spm", "barbell shoulder press", "dumbbell shoulder press", "sdsp", "shoulder press"]], ["Tricep press", ["cable tricep press", "cable tricep curl", "ctc", "cable tricep press bar", "tricep press"]], ["Lat pulldown", ["lat pull down", "lat pulldown", "pull down machine"]], ["Pull up", ["assisted pull up machine", "assisted pull up", "pull up"]], ["Seated row", ["seated row machine", "machine seated row", "cable seated row", "seated row"]], ["Barbell curl", ["barbell full range", "full range barbell bicep curl", "barbell bicep curl full range", "barbell bicep full range", "full range bar curl", "barbell bicep curl", "bar bicep curl", "barbell dumbbell curl", "twist bicep curl", "barbell curl"]], ["Dumbbell curl", ["seated dumbbell curl", "seated incline dumbbell curl", "incline seated dumbbell bicep curl", "standing dumbbell curl", "standing dumbbell curl single arm", "ssa", "seated single arm", "dumbbell curl"]], ["Hammer curl", ["standing hammer curl", "hammer curl", "hammer curl standing", "seated hammer curl", "hc", "sashc"]], ["Arnold press", ["arnold press", "standing arnold press", "seated arnold press", "ap", "sap", "seated ap"]], ["Preacher curl", ["preacher curl", "dumbbell preacher curl", "dumbbell preacher curl single arm", "dpc", "pcm", "pc", "dbpc"]], ["Cable curl", ["cable bicep curl", "cbc", "cable curl"]], ["Skull crusher", ["skull crushers", "skull crusher", "sc"]], ["Single-arm overhead extension", ["single arm overhead tricep", "single arm overhead tricep curl", "saotp", "saote", "single arm tricep extension", "single arm standing tricep curl", "single arm cable rope tricep extension"]], ["Dip", ["assisted dip machine", "dip machine", "dip"]], ["Single-arm row", ["single arm dumbbell row", "single arm dumbbell row", "single arm row"]], ["Core machine", ["ab machine", "core machine"]], ["Side dip", ["plate side dip", "kettle bell side dip", "kb dip", "side dip"]], ["Kettlebell squat", ["kettlebell squat"]], ["Calf raise", ["calf raise leg press", "leg press calf raise", "seated calf raise", "standing calf raise", "calf raise"]], ["Split squat", ["bulgarian split squat", "split squat", "bulgarian", "step up", "step up"]], ["Hip thrust", ["hip thrust", "weighted bridge", "glute bridge"]], ["Tibialis raise", ["tibialis raise", "tib raise", "toe raise"]], ["Leg press", ["leg press", "seated leg press", "lp"]], ["Leg extension", ["leg extension"]], ["Leg curl", ["leg curl", "backwards leg curl"]], ["Hip adduction", ["hip adduction"]], ["Hip abduction", ["hip abduction"]], ["Lunge", ["single leg lunge", "weighted lunge", "walking lunge", "reverse lunge"]]];
 const MUSCLE={"Chest press": "Chest", "Lateral raise": "Shoulders", "Arnold press": "Shoulders", "Shoulder press": "Shoulders", "Overhead tricep extension": "Triceps", "Tricep press": "Triceps", "Skull crusher": "Triceps", "Single-arm overhead extension": "Triceps", "Dip": "Triceps", "Pull up": "Back", "Seated row": "Back", "Lat pulldown": "Back", "Single-arm row": "Back", "Barbell curl": "Biceps", "Dumbbell curl": "Biceps", "Hammer curl": "Biceps", "Preacher curl": "Biceps", "Cable curl": "Biceps", "Leg press": "Legs", "Leg extension": "Legs", "Leg curl": "Legs", "Hip adduction": "Legs", "Hip abduction": "Legs", "Lunge": "Legs", "Calf raise": "Legs", "Split squat": "Legs", "Hip thrust": "Legs", "Tibialis raise": "Legs", "Kettlebell squat": "Legs", "Core machine": "Core", "Side dip": "Core"};
 const ASSISTED=['Pull up','Dip'];
+const MIGRATE={
+ 'Incline chest press':'Chest press','Shoulder press machine':'Shoulder press',
+ 'Dumbbell shoulder press':'Shoulder press','Diagonal lateral raise':'Lateral raise',
+ 'Side lateral raise':'Lateral raise','Seated row machine':'Seated row',
+ 'Assisted pull up':'Pull up','Assisted dip machine':'Dip','Cable tricep press':'Tricep press',
+ 'Single arm overhead tricep':'Single-arm overhead extension','Barbell curl full range':'Barbell curl',
+ 'Barbell bicep curl':'Barbell curl','Seated dumbbell curl':'Dumbbell curl',
+ 'Standing hammer curl':'Hammer curl','Cable bicep curl':'Cable curl',
+ 'Skull crushers':'Skull crusher','Single arm dumbbell row':'Single-arm row',
+ 'Core / side dip':'Side dip','Calf raise leg press':'Calf raise','Weighted bridge':'Hip thrust',
+ 'Bulgarian split squat':'Split squat'};
+function migrate(list){
+  (list||[]).forEach(s2=>(s2.exercises||[]).forEach(e=>{
+    const oldName=e.name||'', oldVar=(e.variant||'').replace(' (Speke)','');
+    const nm=MIGRATE[oldName]||oldName;
+    const v=variantOf(nm, oldName+' '+oldVar);
+    e.name=nm; e.variant=v; e.key=nm+' · '+v;
+    e.assisted=ASSISTED.includes(nm);
+    e.muscle=MUSCLE[nm]||e.muscle||'Other';
+  }));
+  return list;
+}
 function canon(raw){
   const n=raw.toLowerCase().replace(/\(.*?\)/g,'').replace(/[-:]/g,' ').replace(/\s+/g,' ').trim();
   for(const [c,al] of ALIASES) if(al.includes(n)) return c;
@@ -1511,11 +1534,15 @@ function wireAdd(){
     const f=e.target.files[0]; if(!f)return;
     try{
       const j=JSON.parse(await f.text());
-      if(j.sessions){ extra.sessions=j.sessions.filter(s=>!BASE.sessions.some(b=>b.date===s.date&&b.type===s.type)); }
+      if(j.sessions){
+        extra.sessions=migrate(j.sessions.filter(s=>!BASE.sessions.some(b=>b.date===s.date&&b.type===s.type)));
+        const bw0=BASE.body.weight.filter(x=>x!=null).slice(-1)[0]||80;
+        extra.sessions.forEach(s2=>finalise(s2,bw0));
+      }
       if(j.scans) extra.scans=j.scans;
       if(j.runs) extra.runs=j.runs;
-      await save(); D=merge(); rail(); drawAll();
-      el('dataOut').textContent='Imported';
+      await save(); D=merge(); rail(); drawAll(); drawRecent();
+      el('dataOut').textContent=`Imported — ${extra.sessions.length} sessions, ${(extra.runs||[]).length} runs`;
     }catch(err){ el('dataOut').textContent='That file could not be read as a training log'; }
   };
   el('doReset').onclick=async()=>{
